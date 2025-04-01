@@ -1,6 +1,8 @@
 # Wappen Ratespiel
 
-Ein Webspiel zum Raten deutscher Gemeindewappen. Das Spiel lädt Wappendaten dynamisch von Wikidata und präsentiert dem Spieler Multiple-Choice-Fragen.
+Ein Webspiel zum Raten deutscher Gemeinde/Stadt/Orts-Wappen. Das Spiel lädt Wappendaten dynamisch von Wikidata und präsentiert dem Spieler Multiple-Choice-Fragen.
+
+manchmal läuft es ggf unter https://wappenraten.tvluke.de/
 
 ## Installation
 
