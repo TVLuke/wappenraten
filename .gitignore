@@ -1,0 +1,13 @@
+# Cache files
+data/municipalities_cache.json
+
+# Virtual environment
+venv/
+
+# Flask session files
+flask_session/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
