@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+    <link rel="manifest" href="/favicon_io/site.webmanifest">
+    <title>Wappen Ratespiel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .coat-of-arms {
+            max-width: 300px;
+            max-height: 300px;
+            margin: 20px auto;
+        }
+        .options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #f0f0f0;
+        }
+        .stats {
+            margin: 20px 0;
+            font-size: 18px;
+        }
+        .feedback {
+            margin: 20px 0;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .correct {
+            color: green;
+        }
+        .wrong {
+            color: red;
+        }
+        .history-item a {
+            color: #666;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .history {
+            margin-top: 40px;
+            text-align: left;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .history-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .history-item img {
+            width: 50px;
+            height: 50px;
+            margin-right: 15px;
+            object-fit: contain;
+        }
+        .history-item.correct {
+            background-color: rgba(0, 255, 0, 0.1);
+        }
+        .history-item.wrong {
+            background-color: rgba(255, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>Wappen Ratespiel</h1>
+    <div class="stats">
+        Richtig: <span id="correct">0</span> | 
+        Falsch: <span id="wrong">0</span>
+    </div>
+    <img id="coat-of-arms" class="coat-of-arms" src="" alt="">
+    <div id="options" class="options"></div>
+    <div id="feedback" class="feedback"></div>
+    <div id="history" class="history">
+        <h2>Verlauf</h2>
+        <div id="history-list"></div>
+    </div>
+
+    <script>
+        let currentPuzzle = null;
+
+        async function loadPuzzle() {
+            const response = await fetch('/api/puzzle');
+            const puzzle = await response.json();
+            currentPuzzle = puzzle;
+            
+            const coatOfArmsImg = document.getElementById('coat-of-arms');
+            coatOfArmsImg.src = puzzle.image_url;
+            const description = puzzle.image_desc || 'Gemeindewappen';
+            coatOfArmsImg.alt = description;
+            coatOfArmsImg.title = description;
+            
+            const optionsContainer = document.getElementById('options');
+            optionsContainer.innerHTML = '';
+            
+            puzzle.options.forEach(option => {
+                const button = document.createElement('button');
+                button.textContent = option;
+                button.onclick = () => submitAnswer(option);
+                optionsContainer.appendChild(button);
+            });
+            
+            document.getElementById('feedback').textContent = '';
+            
+            // Update stats and history
+            document.getElementById('correct').textContent = puzzle.stats.correct;
+            document.getElementById('wrong').textContent = puzzle.stats.wrong;
+            
+            // Update history display
+            const historyList = document.getElementById('history-list');
+            historyList.innerHTML = '';
+            
+            if (puzzle.history && puzzle.history.length > 0) {
+                puzzle.history.reverse().forEach(entry => {
+                    const historyItem = document.createElement('div');
+                    historyItem.className = `history-item ${entry.is_correct ? 'correct' : 'wrong'}`;
+                    
+                    const img = document.createElement('img');
+                    img.src = entry.image_url;
+                    img.alt = 'Wappen';
+                    
+                    const text = document.createElement('div');
+                    text.innerHTML = `
+                        ${entry.is_correct ? '✓' : '✗'} 
+                        Deine Antwort: <strong>${entry.user_answer}</strong><br>
+                        ${!entry.is_correct ? `Richtige Antwort: <strong>${entry.correct_answer}</strong><br>` : ''}
+                        ${entry.wiki_url ? `<a href="${entry.wiki_url}" target="_blank">Wikipedia-Artikel</a>` : ''}
+                    `;
+                    
+                    historyItem.appendChild(img);
+                    historyItem.appendChild(text);
+                    historyList.appendChild(historyItem);
+                });
+            }
+        }
+
+        async function submitAnswer(answer) {
+            if (!currentPuzzle) return;
+
+            const response = await fetch('/api/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    answer: answer
+                })
+            });
+            
+            const result = await response.json();
+            const feedback = document.getElementById('feedback');
+            
+            if (result.is_correct) {
+                feedback.textContent = '✓ Richtig!';
+                feedback.className = 'feedback correct';
+            } else {
+                feedback.textContent = '✗ Falsch! Die richtige Antwort war: ' + result.correct_answer;
+                feedback.className = 'feedback wrong';
+            }
+            
+            // Load next puzzle after a short delay
+            setTimeout(loadPuzzle, 2000);
+        }
+
+        // Load first puzzle
+        loadPuzzle();
+        async function resetSession() {
+            await fetch('/api/reset', { method: 'POST' });
+            window.location.reload();
+        }
+    </script>
+    
+    <div style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 20px;">
+        <button onclick="resetSession()" style="background-color: #ff4444; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+            Cache leeren
+        </button>
+    </div>
+</body>
+</html>
