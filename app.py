@@ -136,6 +136,10 @@ ORDER BY ?municipalityLabel
     
     print('=== FETCHING MUNICIPALITIES ===')
     for result in results['results']['bindings']:
+        # Skip unwanted entries
+        name = result['municipalityLabel']['value']
+        if "Panzerartilleriebataillon" in name:
+            continue
         image_url = result['coatOfArms']['value']
         image_id = generate_image_id()
         image_mappings[image_id] = image_url
