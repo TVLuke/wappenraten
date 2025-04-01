@@ -314,20 +314,23 @@ def submit_answer():
         if m['name'] == correct_answer
     )
     
-    # Add to history
-    history_entry = {
-        'image_url': correct_municipality['coat_of_arms'],
-        'wiki_url': correct_municipality['wiki_url'],
-        'correct_answer': correct_answer,
-        'user_answer': user_answer,
-        'is_correct': is_correct
-    }
-    print('New history entry:', history_entry)
-    
-    if 'history' not in session:
-        session['history'] = []
-    session['history'].append(history_entry)
-    session.modified = True
+    # Check if municipality is already in history
+    history = session.get('history', [])
+    if not any(entry['correct_answer'] == correct_answer for entry in history):
+        # Only add to history if not already present
+        history_entry = {
+            'image_url': correct_municipality['coat_of_arms'],
+            'wiki_url': correct_municipality['wiki_url'],
+            'correct_answer': correct_answer,
+            'user_answer': user_answer,
+            'is_correct': is_correct
+        }
+        print('New history entry:', history_entry)
+        
+        if 'history' not in session:
+            session['history'] = []
+        session['history'].append(history_entry)
+        session.modified = True
     
     print('Session after update:', dict(session))
     print('Updated history:', session.get('history', []))
