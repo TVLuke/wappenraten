@@ -66,6 +66,8 @@ def save_cache(municipalities, mappings):
 def query_wikidata():
     """Fetch municipalities data from Wikidata via SPARQL."""
     sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
+    # Add User-Agent header to avoid 403 errors
+    sparql.addCustomHttpHeader('User-Agent', 'WappenRatespiel/1.0 (https://github.com/TVLuke/wappenraten)')
     sparql.setQuery("""
 SELECT DISTINCT ?municipality ?municipalityLabel ?coatOfArms ?coatOfArmsText ?article
 WHERE {
