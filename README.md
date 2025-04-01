@@ -26,3 +26,6 @@ http://localhost:5000
 - Session-basierte Punkteverfolgung
 - Automatisches Laden des nächsten Rätsels
 - Einfache, moderne Benutzeroberfläche
+
+# Note on Use of LLMs
+This code was created using, among other tools, LLM tools like ChatGPT.
