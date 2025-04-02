@@ -1,0 +1,20 @@
+name: Deployment Check
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Run every 5 minutes
+
+jobs:
+  check-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check website availability
+        run: |
+          response=$(wget -qO- https://wappenraten.tvluke.de/)
+          if echo "$response" | grep -q "Quellcode verfügbar"; then
+            echo "Website is up and contains the expected string"
+            exit 0
+          else
+            echo "Website check failed"
+            exit 1
+          fi
