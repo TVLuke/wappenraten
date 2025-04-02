@@ -4,6 +4,8 @@ from datetime import timedelta, datetime
 import json
 import os
 import random
+import uuid
+from pathlib import Path
 import requests
 import uuid
 from io import BytesIO
@@ -13,6 +15,29 @@ municipalities = []
 
 # Store image mappings
 image_mappings = {}
+
+USER_DATA_DIR = 'data/users'
+
+class UserGameData:
+    def __init__(self):
+        self.data_dir = Path(USER_DATA_DIR)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+    
+    def get_user_file(self, user_id):
+        return self.data_dir / f"{user_id}.json"
+    
+    def get_user_data(self, user_id):
+        try:
+            if os.path.getsize(self.get_user_file(user_id)) > 0:
+                with open(self.get_user_file(user_id)) as f:
+                    return json.load(f)
+            return {'correct': 0, 'wrong': 0, 'history': [], 'used_municipalities': []}
+        except (FileNotFoundError, OSError):
+            return {'correct': 0, 'wrong': 0, 'history': [], 'used_municipalities': []}
+    
+    def save_user_data(self, user_id, data):
+        with open(self.get_user_file(user_id), 'w') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
 def create_app():
     app = Flask(__name__)
@@ -226,91 +251,78 @@ def initialize():
 with app.app_context():
     municipalities = fetch_municipalities()
 
+game_data = UserGameData()
+
+@app.before_request
+def ensure_user_id():
+    if 'user_id' not in session:
+        session['user_id'] = str(uuid.uuid4())
+
+
 @app.route('/api/puzzle')
 def get_puzzle():
     print('=== GET PUZZLE ===')
-    print('Current session state:', dict(session))
+    user_id = session['user_id']
+    user_data = game_data.get_user_data(user_id)
     
-    # Initialize session if needed
-    if 'correct' not in session:
-        print('Initializing new session')
-        session['correct'] = 0
-        session['wrong'] = 0
-        session['history'] = []
-        session['used_municipalities'] = []
-        session.modified = True
-        print('Session after initialization:', dict(session))
-    
-    # Get unused municipalities
-    used_municipalities = session.get('used_municipalities', [])
-    available_municipalities = [m for m in municipalities if m['name'] not in used_municipalities]
+    # Get list of unused municipalities
+    used = set(user_data.get('used_municipalities', []))
+    available = [m for m in municipalities if m['name'] not in used]
     
     # If all municipalities have been used, reset the list
-    if not available_municipalities:
-        print('All municipalities used, resetting list')
-        available_municipalities = municipalities
-        session['used_municipalities'] = []
+    if not available:
+        available = municipalities
+        user_data['used_municipalities'] = []
     
-    # Select random municipality for the puzzle
-    correct_municipality = random.choice(available_municipalities)
+    # Select correct answer and generate options
+    correct_municipality = random.choice(available)
+    correct_answer = correct_municipality['name']
+    user_data['used_municipalities'].append(correct_answer)
     
-    # Add to used list
-    if 'used_municipalities' not in session:
-        session['used_municipalities'] = []
-    session['used_municipalities'].append(correct_municipality['name'])
-    session.modified = True
-    
-    print(f'Selected municipality: {correct_municipality["name"]}')
-    print(f'Used municipalities: {len(session["used_municipalities"])}/{len(municipalities)}')
-    
-    # Select 9 other random municipalities for wrong answers
-    other_municipalities = random.sample([m for m in municipalities 
-                                       if m != correct_municipality], 9)
+    # Generate wrong options
+    other_names = [m['name'] for m in municipalities if m['name'] != correct_answer]
+    wrong_options = random.sample(other_names, min(9, len(other_names)))
     
     # Combine and shuffle options
-    options = [correct_municipality['name']] + [m['name'] for m in other_municipalities]
+    options = [correct_answer] + wrong_options
     random.shuffle(options)
+    
+    game_data.save_user_data(user_id, user_data)
     
     return jsonify({
         'image_url': correct_municipality['coat_of_arms'],
         'image_desc': correct_municipality['coat_of_arms_desc'],
         'options': options,
         'stats': {
-            'correct': session.get('correct', 0),
-            'wrong': session.get('wrong', 0)
+            'correct': user_data.get('correct', 0),
+            'wrong': user_data.get('wrong', 0)
         },
-        'history': session.get('history', [])
+        'history': user_data.get('history', [])
     })
 
 @app.route('/api/submit', methods=['POST'])
 def submit_answer():
     print('=== SUBMIT ANSWER ===')
-    print('Session before submit:', dict(session))
-    print('Current history:', session.get('history', []))
+    user_id = session['user_id']
+    user_data = game_data.get_user_data(user_id)
     
     # Get the user's answer from the request
     data = request.get_json()
     user_answer = data.get('answer')
     
-    # Get the correct answer from the current puzzle in the session
-    used_municipalities = session.get('used_municipalities', [])
+    # Get the correct answer from the current puzzle
+    used_municipalities = user_data.get('used_municipalities', [])
     if not used_municipalities:
         return jsonify({'error': 'No puzzle in progress'}), 400
     correct_answer = used_municipalities[-1]  # Last added municipality is the current puzzle
     
     is_correct = user_answer == correct_answer
     
-    # Initialize session if needed
-    if 'correct' not in session:
-        print('Initializing session in submit')
-        session['correct'] = 0
-        session['wrong'] = 0
-        session['history'] = []
-    
+    # Update stats
     if is_correct:
-        session['correct'] = session.get('correct', 0) + 1
+        user_data['correct'] = user_data.get('correct', 0) + 1
     else:
-        session['wrong'] = session.get('wrong', 0) + 1
+        user_data['wrong'] = user_data.get('wrong', 0) + 1
     
     # Find the correct municipality to get its wiki_url and image_url
     correct_municipality = next(
@@ -319,7 +331,7 @@ def submit_answer():
     )
     
     # Check if municipality is already in history
-    history = session.get('history', [])
+    history = user_data.get('history', [])
     if not any(entry['correct_answer'] == correct_answer for entry in history):
         # Only add to history if not already present
         history_entry = {
@@ -329,24 +341,18 @@ def submit_answer():
             'user_answer': user_answer,
             'is_correct': is_correct
         }
-        print('New history entry:', history_entry)
-        
-        if 'history' not in session:
-            session['history'] = []
-        session['history'].append(history_entry)
-        session.modified = True
+        user_data.setdefault('history', []).append(history_entry)
     
-    print('Session after update:', dict(session))
-    print('Updated history:', session.get('history', []))
+    game_data.save_user_data(user_id, user_data)
     
     return jsonify({
         'is_correct': is_correct,
         'correct_answer': correct_answer,
         'stats': {
-            'correct': session.get('correct', 0),
-            'wrong': session.get('wrong', 0)
+            'correct': user_data.get('correct', 0),
+            'wrong': user_data.get('wrong', 0)
         },
-        'history': session.get('history', [])
+        'history': user_data.get('history', [])
     })
 
 @app.route('/')
@@ -371,4 +377,4 @@ def reset_session():
     return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
