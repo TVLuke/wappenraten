@@ -123,6 +123,7 @@ WHERE {
         wd:Q224936     # Landkreis (Untertyp)
         wd:Q1663803    # Gemeindeverwaltung
         wd:Q42744322   # Städtische Gemeinde in Deutschland
+        wd:Q116457956  # non-urban municipality in Germany
     }
     
     ?municipality wdt:P31 ?type ;       
