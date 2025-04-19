@@ -368,10 +368,9 @@ def submit_answer():
         }
         user_data.setdefault('history', []).append(history_entry)
     
-    # Clear the current puzzle only if the answer was correct
-    # This ensures players can't just refresh to get a new puzzle if they don't know the answer
-    if is_correct:
-        user_data.pop('current_puzzle', None)
+    # Clear the current puzzle after any guess (correct or incorrect)
+    # This ensures players can't refresh to get a new puzzle without guessing
+    user_data.pop('current_puzzle', None)
     
     game_data.save_user_data(user_id, user_data)
     
