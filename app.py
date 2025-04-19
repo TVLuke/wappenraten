@@ -266,6 +266,21 @@ def get_puzzle():
     user_id = session['user_id']
     user_data = game_data.get_user_data(user_id)
     
+    # Check if there's a current puzzle that hasn't been answered yet
+    if 'current_puzzle' in user_data:
+        print('Re-serving existing puzzle')
+        current_puzzle = user_data['current_puzzle']
+        return jsonify({
+            'image_url': current_puzzle['image_url'],
+            'image_desc': current_puzzle['image_desc'],
+            'options': current_puzzle['options'],
+            'stats': {
+                'correct': user_data.get('correct', 0),
+                'wrong': user_data.get('wrong', 0)
+            },
+            'history': user_data.get('history', [])
+        })
+    
     # Get list of unused municipalities
     used = set(user_data.get('used_municipalities', []))
     available = [m for m in municipalities if m['name'] not in used]
@@ -287,6 +302,14 @@ def get_puzzle():
     # Combine and shuffle options
     options = [correct_answer] + wrong_options
     random.shuffle(options)
+    
+    # Store the current puzzle in user data
+    user_data['current_puzzle'] = {
+        'image_url': correct_municipality['coat_of_arms'],
+        'image_desc': correct_municipality['coat_of_arms_desc'],
+        'options': options,
+        'correct_answer': correct_answer
+    }
     
     game_data.save_user_data(user_id, user_data)
     
@@ -311,11 +334,12 @@ def submit_answer():
     data = request.get_json()
     user_answer = data.get('answer')
     
-    # Get the correct answer from the current puzzle
-    used_municipalities = user_data.get('used_municipalities', [])
-    if not used_municipalities:
+    # Check if there's a current puzzle
+    if 'current_puzzle' not in user_data:
         return jsonify({'error': 'No puzzle in progress'}), 400
-    correct_answer = used_municipalities[-1]  # Last added municipality is the current puzzle
+    
+    # Get the correct answer from the current puzzle
+    correct_answer = user_data['current_puzzle']['correct_answer']
     
     is_correct = user_answer == correct_answer
     
@@ -325,7 +349,7 @@ def submit_answer():
     else:
         user_data['wrong'] = user_data.get('wrong', 0) + 1
     
-    # Find the correct municipality to get its wiki_url and image_url
+    # Find the correct municipality to get its wiki_url
     correct_municipality = next(
         m for m in municipalities 
         if m['name'] == correct_answer
@@ -336,13 +360,18 @@ def submit_answer():
     if not any(entry['correct_answer'] == correct_answer for entry in history):
         # Only add to history if not already present
         history_entry = {
-            'image_url': correct_municipality['coat_of_arms'],
+            'image_url': user_data['current_puzzle']['image_url'],
             'wiki_url': correct_municipality['wiki_url'],
             'correct_answer': correct_answer,
             'user_answer': user_answer,
             'is_correct': is_correct
         }
         user_data.setdefault('history', []).append(history_entry)
+    
+    # Clear the current puzzle only if the answer was correct
+    # This ensures players can't just refresh to get a new puzzle if they don't know the answer
+    if is_correct:
+        user_data.pop('current_puzzle', None)
     
     game_data.save_user_data(user_id, user_data)
     
@@ -374,8 +403,17 @@ def favicon(filename):
 
 @app.route('/api/reset', methods=['POST'])
 def reset_session():
+    # Get the user ID before clearing the session
+    if 'user_id' in session:
+        user_id = session['user_id']
+        user_data = game_data.get_user_data(user_id)
+        # Clear the current puzzle to force a new one after reset
+        if 'current_puzzle' in user_data:
+            user_data.pop('current_puzzle', None)
+            game_data.save_user_data(user_id, user_data)
+    
     session.clear()
-    return jsonify({'status': 'ok'})
+    return jsonify({'message': 'Session reset successfully'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
